@@ -40,10 +40,10 @@ SCOPES = [
 
 # --- Annotator assignment: map name -> (start_id, end_id) ---
 ANNOTATOR_ASSIGNMENTS = {
-    "annotator_1": (1, 716),
-    "annotator_2": (717, 1432),
-    "annotator_3": (1433, 2148),
-    "annotator_4": (2149, 2861),
+    "Benni": (1, 716),
+    "Emilia": (717, 1432),
+    "Vanessa": (1433, 2148),
+    "Anna": (2149, 2861),
 }
 
 FEATURE_LABELS = ["—", "Correct", "Wrong"]
