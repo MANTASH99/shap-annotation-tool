@@ -361,8 +361,8 @@ def main():
             sheet_name = st.secrets.get("sheet_name", "SHAP_Annotations")
             ws = get_or_create_worksheet(gc, sheet_name, "annotations")
             sheets_connected = True
-    except Exception:
-        pass
+    except Exception as e:
+        st.sidebar.error(f"Google Sheets error: {e}")
 
     if sheets_connected:
         st.sidebar.success("Storage: Google Sheets")
