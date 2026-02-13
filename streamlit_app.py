@@ -11,6 +11,7 @@ SHAP Annotation Tool — Streamlit Cloud Edition
 import streamlit as st
 import json
 import csv
+import time
 import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime
@@ -77,8 +78,16 @@ def get_or_create_worksheet(client, sheet_name, worksheet_title):
     return ws
 
 
-def load_annotations_from_sheet(ws, annotator_name):
-    records = ws.get_all_records()
+def load_annotations_from_sheet(ws, annotator_name, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            records = ws.get_all_records()
+            break
+        except gspread.exceptions.APIError as e:
+            if e.response.status_code == 429 and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                raise
     out = {}
     for r in records:
         if str(r["annotator"]) == annotator_name:
@@ -99,10 +108,9 @@ def load_annotations_from_sheet(ws, annotator_name):
     return out
 
 
-def save_annotation_to_sheet(ws, row_data):
+def save_annotation_to_sheet(ws, row_data, max_retries=3):
     sample_id = str(row_data["sample_id"])
     annotator = row_data["annotator"]
-    cell_list = ws.findall(sample_id, in_column=1)
     row_values = [
         row_data["sample_id"],
         row_data["annotator"],
@@ -119,12 +127,21 @@ def save_annotation_to_sheet(ws, row_data):
         row_data["comment"],
         row_data["timestamp"],
     ]
-    for cell in cell_list:
-        existing = ws.row_values(cell.row)
-        if len(existing) >= 2 and existing[1] == annotator:
-            ws.update(f"A{cell.row}:N{cell.row}", [row_values])
+    for attempt in range(max_retries):
+        try:
+            cell_list = ws.findall(sample_id, in_column=1)
+            for cell in cell_list:
+                existing = ws.row_values(cell.row)
+                if len(existing) >= 2 and existing[1] == annotator:
+                    ws.update(f"A{cell.row}:N{cell.row}", [row_values])
+                    return
+            ws.append_row(row_values)
             return
-    ws.append_row(row_values)
+        except gspread.exceptions.APIError as e:
+            if e.response.status_code == 429 and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # wait 1s, 2s, 4s
+            else:
+                raise
 
 
 # ---------------------------------------------------------------------------
@@ -352,17 +369,22 @@ def main():
     start_id, end_id = ANNOTATOR_ASSIGNMENTS[annotator_name]
     st.sidebar.success(f"Your samples: **{start_id}** to **{end_id}**")
 
-    # --- Storage connection ---
+    # --- Storage connection (cached in session_state to avoid API calls on every rerun) ---
     sheets_connected = False
     ws = None
-    try:
-        gc = get_gsheet_client()
-        if gc:
-            sheet_name = st.secrets.get("sheet_name", "SHAP_Annotations")
-            ws = get_or_create_worksheet(gc, sheet_name, "annotations")
-            sheets_connected = True
-    except Exception as e:
-        st.sidebar.error(f"Google Sheets error: {e}")
+    if "ws" in st.session_state and st.session_state.ws is not None:
+        ws = st.session_state.ws
+        sheets_connected = True
+    else:
+        try:
+            gc = get_gsheet_client()
+            if gc:
+                sheet_name = st.secrets.get("sheet_name", "SHAP_Annotations")
+                ws = get_or_create_worksheet(gc, sheet_name, "annotations")
+                st.session_state.ws = ws
+                sheets_connected = True
+        except Exception as e:
+            st.sidebar.error(f"Google Sheets error: {e}")
 
     if sheets_connected:
         st.sidebar.success("Storage: Google Sheets")
