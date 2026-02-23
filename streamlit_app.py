@@ -591,20 +591,18 @@ def render_iaa_annotation(annotator_name, normal_data, relational_data,
         current_idx = 0
 
     idx_input = st.sidebar.number_input(
-        f"Sample position (1-{len(display_ids)})",
+        f"IAA sample position (1-{len(display_ids)})",
         min_value=1, max_value=len(display_ids),
         value=current_idx + 1, step=1,
-        key="iaa_idx_input",
     )
     current_idx = idx_input - 1
     sample_id = display_ids[current_idx]
 
     # Jump to sample ID
     jump_id = st.sidebar.number_input(
-        "Jump to sample ID",
+        "Jump to IAA sample ID",
         min_value=min(iaa_ids), max_value=max(iaa_ids),
         value=sample_id, step=1,
-        key="iaa_jump_id",
     )
     if jump_id != sample_id and jump_id in set(iaa_ids):
         sample_id = jump_id
