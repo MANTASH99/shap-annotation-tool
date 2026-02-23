@@ -70,7 +70,10 @@ IAA_CATEGORIES = ["Correct Reason", "Wrong Reason", "Unclear / Cannot Decide"]
 def get_gsheet_client():
     if not GSPREAD_AVAILABLE:
         return None
-    creds_dict = dict(st.secrets["gcp_service_account"])
+    try:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+    except (FileNotFoundError, KeyError):
+        return None
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
@@ -643,12 +646,9 @@ def render_iaa_annotation(annotator_name, normal_data, relational_data,
         phrases = [" ".join(r) if isinstance(r, list) else r for r in relations]
         st.markdown(f"**Relation groups:** {' | '.join(phrases)}")
 
-    # Existing per-feature annotations
     existing = annotations.get(sample_id, {})
-    existing_nfa = existing.get("normal_feature_annotations", {})
-    existing_rfa = existing.get("relational_feature_annotations", {})
 
-    # === SHAP VISUALIZATIONS ===
+    # === SHAP VISUALIZATIONS (view only, no per-feature marking for IAA) ===
     st.markdown("---")
     col1, col2 = st.columns(2)
 
@@ -658,10 +658,6 @@ def render_iaa_annotation(annotator_name, normal_data, relational_data,
         st.markdown("")
         fig_n = render_shap_bar(n_meta["shap_values"], "Top-8 Normal SHAP")
         st.plotly_chart(fig_n, use_container_width=True, key=f"iaa_bar_n_{sample_id}")
-        st.markdown("**Mark each feature:**")
-        normal_fa = render_feature_annotation(
-            n_meta["shap_values"], "normal", sample_id, existing_nfa, key_prefix="iaa_",
-        )
 
     with col2:
         html_r = render_highlighted_text(r_meta["shap_values"], "Relational SHAP (phrase-level)")
@@ -669,10 +665,6 @@ def render_iaa_annotation(annotator_name, normal_data, relational_data,
         st.markdown("")
         fig_r = render_shap_bar(r_meta["shap_values"], "Top-8 Relational SHAP")
         st.plotly_chart(fig_r, use_container_width=True, key=f"iaa_bar_r_{sample_id}")
-        st.markdown("**Mark each feature:**")
-        relational_fa = render_feature_annotation(
-            r_meta["shap_values"], "relational", sample_id, existing_rfa, key_prefix="iaa_",
-        )
 
     # === OVERALL ANNOTATION ===
     st.markdown("---")
@@ -720,8 +712,8 @@ def render_iaa_annotation(annotator_name, normal_data, relational_data,
             "confidence": round(n_meta["confidence"], 4),
             "normal_shap_label": normal_label,
             "relational_shap_label": relational_label,
-            "normal_feature_annotations": normal_fa,
-            "relational_feature_annotations": relational_fa,
+            "normal_feature_annotations": {},
+            "relational_feature_annotations": {},
             "normal_shap_values": n_meta["shap_values"],
             "relational_shap_values": r_meta["shap_values"],
             "comment": comment,
