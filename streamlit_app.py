@@ -41,12 +41,14 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# --- Annotator assignment: map name -> (start_id, end_id) ---
+# --- Annotator assignment: map name -> (start_id, end_id) or list of IDs ---
 ANNOTATOR_ASSIGNMENTS = {
     "Benni": (1, 716),
     "Emilia": (717, 1432),
     "Vanessa": (1433, 2148),
     "Anna": (2149, 2861),
+    "Roman": [42, 156, 389, 512, 678, 803, 971, 1105, 1290, 1401,
+              1522, 1689, 1834, 2001, 2100, 2250, 2415, 2600, 2750, 2830],
 }
 
 ANNOTATOR_NAMES = list(ANNOTATOR_ASSIGNMENTS.keys())
@@ -911,12 +913,23 @@ def main():
     if not annotator_name:
         st.info("Select your annotator ID in the sidebar to begin.")
         st.markdown("### Annotator Assignments")
-        for name, (start, end) in ANNOTATOR_ASSIGNMENTS.items():
-            st.write(f"**{name}**: samples {start} - {end} ({end - start + 1} samples)")
+        for name, assignment in ANNOTATOR_ASSIGNMENTS.items():
+            if isinstance(assignment, list):
+                st.write(f"**{name}**: {len(assignment)} selected samples")
+            else:
+                start, end = assignment
+                st.write(f"**{name}**: samples {start} - {end} ({end - start + 1} samples)")
         return
 
-    start_id, end_id = ANNOTATOR_ASSIGNMENTS[annotator_name]
-    st.sidebar.success(f"Your samples: **{start_id}** to **{end_id}**")
+    assignment = ANNOTATOR_ASSIGNMENTS[annotator_name]
+    if isinstance(assignment, list):
+        explicit_ids = assignment
+        start_id, end_id = None, None
+        st.sidebar.success(f"Your samples: **{len(explicit_ids)} selected samples**")
+    else:
+        explicit_ids = None
+        start_id, end_id = assignment
+        st.sidebar.success(f"Your samples: **{start_id}** to **{end_id}**")
 
     # --- Storage connection (cached in session_state to avoid API calls on every rerun) ---
     sheets_connected = False
@@ -1008,7 +1021,10 @@ def main():
     relational_data = load_relational_shap()
     relation_data = load_relation_data()
 
-    my_ids = sorted([sid for sid in normal_data if start_id <= sid <= end_id])
+    if explicit_ids is not None:
+        my_ids = sorted([sid for sid in explicit_ids if sid in normal_data])
+    else:
+        my_ids = sorted([sid for sid in normal_data if start_id <= sid <= end_id])
     total = len(my_ids)
 
     # --- Load existing annotations ---
@@ -1073,9 +1089,11 @@ def main():
     sample_id = display_ids[current_idx]
 
     # --- Sidebar: jump to sample ID ---
+    jump_min = min(my_ids) if my_ids else 1
+    jump_max = max(my_ids) if my_ids else 1
     jump_id = st.sidebar.number_input(
         "Jump to sample ID",
-        min_value=start_id, max_value=end_id,
+        min_value=jump_min, max_value=jump_max,
         value=sample_id, step=1,
     )
     if jump_id != sample_id and jump_id in normal_data:
