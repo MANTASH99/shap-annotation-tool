@@ -57,13 +57,42 @@ IAA_ANNOTATOR_NAMES = [n for n in ANNOTATOR_NAMES if n != "Roman"]
 
 FEATURE_LABELS = ["—", "Correct", "Wrong"]
 
-# --- IAA sample pool: last 25 from each annotator's range (100 total) ---
-IAA_SAMPLE_IDS = sorted(
-    list(range(692, 717)) +      # Benni's last 25
-    list(range(1408, 1433)) +    # Emilia's last 25
-    list(range(2124, 2149)) +    # Vanessa's last 25
-    list(range(2837, 2862))      # Anna's last 25
+# --- IAA Round 1: last 25 from each annotator's range (100 total, 4 emotions) ---
+IAA_ROUND1_IDS = sorted(
+    list(range(692, 717)) +      # Benni's last 25 (disgust)
+    list(range(1408, 1433)) +    # Emilia's last 25 (joy)
+    list(range(2124, 2149)) +    # Vanessa's last 25 (sadness)
+    list(range(2837, 2862))      # Anna's last 25 (trust)
 )
+
+# --- IAA Round 2: 120 samples for 6 missing emotions (20 each, seed=2026) ---
+# Each annotator skips the emotion they already annotated (owner).
+IAA_ROUND2 = {
+    "anger":    {"owner": "Benni",   "ids": [2, 46, 57, 73, 149, 162, 224, 313, 323, 353, 363, 370, 395, 400, 412, 420, 427, 442, 451, 477]},
+    "boredom":  {"owner": "Benni",   "ids": [503, 520, 523, 526, 529, 537, 554, 565, 574, 575, 581, 588, 590, 592, 597, 602, 616, 618, 626, 632]},
+    "fear":     {"owner": "Emilia",  "ids": [889, 923, 936, 1035, 1063, 1065, 1080, 1081, 1093, 1094, 1113, 1128, 1132, 1136, 1145, 1160, 1172, 1176, 1184, 1207]},
+    "pride":    {"owner": "Vanessa", "ids": [1504, 1517, 1544, 1554, 1558, 1564, 1606, 1609, 1620, 1624, 1649, 1697, 1707, 1711, 1725, 1732, 1737, 1738, 1748, 1754]},
+    "relief":   {"owner": "Vanessa", "ids": [1759, 1765, 1795, 1808, 1823, 1825, 1832, 1849, 1859, 1867, 1874, 1876, 1879, 1881, 1882, 1890, 1909, 1924, 1934, 1935]},
+    "surprise": {"owner": "Anna",    "ids": [2296, 2311, 2328, 2329, 2372, 2411, 2415, 2427, 2441, 2468, 2495, 2500, 2502, 2509, 2512, 2523, 2532, 2533, 2539, 2541]},
+}
+IAA_ROUND2_ALL_IDS = sorted(sid for info in IAA_ROUND2.values() for sid in info["ids"])
+
+
+def get_iaa_ids_for_annotator(annotator_name, iaa_round):
+    """Get IAA sample IDs for a given annotator and round."""
+    if iaa_round == 1:
+        return IAA_ROUND1_IDS
+    else:
+        # Round 2: skip emotions the annotator owns
+        ids = []
+        for emo, info in IAA_ROUND2.items():
+            if info["owner"] != annotator_name:
+                ids.extend(info["ids"])
+        return sorted(ids)
+
+
+# Combined for IAA dashboard (all samples from both rounds)
+IAA_SAMPLE_IDS = sorted(set(IAA_ROUND1_IDS + IAA_ROUND2_ALL_IDS))
 
 IAA_CATEGORIES = ["Correct Reason", "Wrong Reason", "Unclear / Cannot Decide"]
 
@@ -506,10 +535,19 @@ def load_iaa_dashboard_data(ws_iaa):
 # ---------------------------------------------------------------------------
 def render_iaa_annotation(annotator_name, normal_data, relational_data,
                           relation_data, ws_iaa, sheets_connected):
-    """IAA annotation UI — same as regular but for the 100 shared samples."""
+    """IAA annotation UI — shared samples for inter-annotator agreement."""
 
-    # Filter IAA samples to those available in data
-    iaa_ids = [sid for sid in IAA_SAMPLE_IDS if sid in normal_data]
+    # Round selector
+    iaa_round = st.radio(
+        "IAA Round", [1, 2], horizontal=True,
+        format_func=lambda x: f"Round {x}" + (" (4 emotions, 100 samples)" if x == 1
+                                               else " (6 emotions, 80-100 samples)"),
+        key="iaa_round_select",
+    )
+
+    # Get samples for this annotator and round
+    round_ids = get_iaa_ids_for_annotator(annotator_name, iaa_round)
+    iaa_ids = [sid for sid in round_ids if sid in normal_data]
     total = len(iaa_ids)
 
     if total == 0:
@@ -852,11 +890,26 @@ def render_iaa_dashboard(ws_iaa):
     """IAA Dashboard: progress, agreement metrics, disagreement browser."""
     st.subheader("Inter-Annotator Agreement Dashboard")
 
+    # Round selector
+    dash_round = st.radio(
+        "Show results for", ["Round 1 (4 emotions)", "Round 2 (6 emotions)", "Both rounds combined"],
+        horizontal=True, key="iaa_dash_round",
+    )
+
     records = load_iaa_dashboard_data(ws_iaa)
 
     if not records:
         st.info("No IAA annotations found yet. Start annotating in the Annotate tab!")
         return
+
+    # Filter records by round
+    if dash_round.startswith("Round 1"):
+        valid_ids = set(IAA_ROUND1_IDS)
+        records = [r for r in records if int(r.get("sample_id", 0)) in valid_ids]
+    elif dash_round.startswith("Round 2"):
+        valid_ids = set(IAA_ROUND2_ALL_IDS)
+        records = [r for r in records if int(r.get("sample_id", 0)) in valid_ids]
+    # else: combined, keep all records
 
     # Refresh button
     if st.button("Refresh data", key="iaa_refresh"):
@@ -866,7 +919,15 @@ def render_iaa_dashboard(ws_iaa):
 
     # --- Per-annotator progress ---
     st.markdown("### Annotator Progress")
-    total_iaa = len(IAA_SAMPLE_IDS)
+
+    if dash_round.startswith("Round 1"):
+        # Round 1: all annotators see all 100 samples
+        total_iaa = len(IAA_ROUND1_IDS)
+    elif dash_round.startswith("Round 2"):
+        # Round 2: varies per annotator (80 or 100)
+        total_iaa = len(IAA_ROUND2_ALL_IDS)  # max, adjusted per annotator below
+    else:
+        total_iaa = len(IAA_SAMPLE_IDS)
 
     progress_data = {name: set() for name in IAA_ANNOTATOR_NAMES}
     for r in records:
@@ -877,10 +938,15 @@ def render_iaa_dashboard(ws_iaa):
     cols = st.columns(len(IAA_ANNOTATOR_NAMES))
     for col, name in zip(cols, IAA_ANNOTATOR_NAMES):
         count = len(progress_data[name])
+        # For Round 2, each annotator has a different total (skips owned emotions)
+        if dash_round.startswith("Round 2"):
+            ann_total = len(get_iaa_ids_for_annotator(name, 2))
+        else:
+            ann_total = total_iaa
         with col:
             st.markdown(f"**{name}**")
-            st.progress(count / total_iaa if total_iaa else 0)
-            st.write(f"{count} / {total_iaa}")
+            st.progress(count / ann_total if ann_total else 0)
+            st.write(f"{count} / {ann_total}")
 
     st.markdown("---")
 
