@@ -52,6 +52,8 @@ ANNOTATOR_ASSIGNMENTS = {
 }
 
 ANNOTATOR_NAMES = list(ANNOTATOR_ASSIGNMENTS.keys())
+# Roman is a supervisor / reviewer — exclude from IAA calculations
+IAA_ANNOTATOR_NAMES = [n for n in ANNOTATOR_NAMES if n != "Roman"]
 
 FEATURE_LABELS = ["—", "Correct", "Wrong"]
 
@@ -455,7 +457,7 @@ def build_iaa_rating_data(records, label_field, categories):
     labels_per_sample = {}
     for sid in sorted(all_sids):
         labels = []
-        for ann in ANNOTATOR_NAMES:
+        for ann in IAA_ANNOTATOR_NAMES:
             if ann in labels_by_annotator and sid in labels_by_annotator[ann]:
                 labels.append(labels_by_annotator[ann][sid])
         if len(labels) >= 2:
@@ -772,9 +774,9 @@ def display_agreement_metrics(records, label_field, label_display_name):
     # --- Pairwise Cohen's kappa ---
     st.markdown(f"#### Pairwise Cohen's Kappa")
     pairs = []
-    for i in range(len(ANNOTATOR_NAMES)):
-        for j in range(i + 1, len(ANNOTATOR_NAMES)):
-            a, b = ANNOTATOR_NAMES[i], ANNOTATOR_NAMES[j]
+    for i in range(len(IAA_ANNOTATOR_NAMES)):
+        for j in range(i + 1, len(IAA_ANNOTATOR_NAMES)):
+            a, b = IAA_ANNOTATOR_NAMES[i], IAA_ANNOTATOR_NAMES[j]
             a_labels = labels_by_annotator.get(a, {})
             b_labels = labels_by_annotator.get(b, {})
             shared_sids = sorted(set(a_labels.keys()) & set(b_labels.keys()))
@@ -799,7 +801,7 @@ def display_agreement_metrics(records, label_field, label_display_name):
     # --- Fleiss' kappa (samples where ALL raters annotated) ---
     full_samples = {
         sid: labels for sid, labels in labels_per_sample.items()
-        if len(labels) == len(ANNOTATOR_NAMES)
+        if len(labels) == len(IAA_ANNOTATOR_NAMES)
     }
 
     if full_samples:
@@ -812,14 +814,14 @@ def display_agreement_metrics(records, label_field, label_display_name):
                     ratings_matrix[row_i][cat_idx[label]] += 1
 
         fleiss_k = compute_fleiss_kappa(ratings_matrix)
-        st.markdown("#### Fleiss' Kappa (all 4 raters)")
+        st.markdown(f"#### Fleiss' Kappa (all {len(IAA_ANNOTATOR_NAMES)} raters)")
         st.metric(
-            f"n={n_subjects} samples, {len(ANNOTATOR_NAMES)} raters",
+            f"n={n_subjects} samples, {len(IAA_ANNOTATOR_NAMES)} raters",
             f"{fleiss_k:.3f}",
         )
     else:
         st.info(
-            f"Fleiss' kappa requires all {len(ANNOTATOR_NAMES)} annotators "
+            f"Fleiss' kappa requires all {len(IAA_ANNOTATOR_NAMES)} annotators "
             "to rate the same samples. No fully-rated samples yet."
         )
 
@@ -838,7 +840,7 @@ def display_agreement_metrics(records, label_field, label_display_name):
         with st.expander(f"View {len(disagreed)} disagreed samples"):
             for sid in sorted(disagreed.keys()):
                 annotators_for_sid = []
-                for ann in ANNOTATOR_NAMES:
+                for ann in IAA_ANNOTATOR_NAMES:
                     if ann in labels_by_annotator and sid in labels_by_annotator[ann]:
                         annotators_for_sid.append(
                             f"**{ann}**: {labels_by_annotator[ann][sid]}")
@@ -866,14 +868,14 @@ def render_iaa_dashboard(ws_iaa):
     st.markdown("### Annotator Progress")
     total_iaa = len(IAA_SAMPLE_IDS)
 
-    progress_data = {name: set() for name in ANNOTATOR_NAMES}
+    progress_data = {name: set() for name in IAA_ANNOTATOR_NAMES}
     for r in records:
         ann = str(r.get("annotator", ""))
         if ann in progress_data:
             progress_data[ann].add(int(r.get("sample_id", 0)))
 
-    cols = st.columns(len(ANNOTATOR_NAMES))
-    for col, name in zip(cols, ANNOTATOR_NAMES):
+    cols = st.columns(len(IAA_ANNOTATOR_NAMES))
+    for col, name in zip(cols, IAA_ANNOTATOR_NAMES):
         count = len(progress_data[name])
         with col:
             st.markdown(f"**{name}**")
