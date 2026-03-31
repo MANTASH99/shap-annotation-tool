@@ -14,6 +14,7 @@ import json
 import csv
 import time
 import numpy as np
+import pandas  # must import before plotly to avoid circular import on Python 3.13
 import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime
