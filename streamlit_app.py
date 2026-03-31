@@ -322,7 +322,7 @@ def render_shap_bar(features, title):
     fig = go.Figure(go.Bar(
         x=values, y=labels, orientation="h",
         marker_color=colors,
-        text=[f"{v:+.4f}" for v in values],
+        text=tuple(f"{v:+.4f}" for v in values),
         textposition="outside",
     ))
     fig.update_layout(
